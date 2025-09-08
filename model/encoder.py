@@ -11,35 +11,7 @@ import torch.nn.functional as F
 from model.attention import MultiHeadAttention
 from model.encoding import PositionalEncoding
 from model.utils import save_hyperparams
-
-
-class PositionWiseFFN(nn.Module):
-    """
-    Position-wise feed-forward network.
-    """
-    def __init__(self, ffn_num_hiddens, num_hiddens, **kwargs):
-        super(PositionWiseFFN, self).__init__(**kwargs)
-        save_hyperparams(self)
-        # Linear map with 2 layers and ReLU. Note the output shape is unchanged.
-        self.dense1 = nn.Linear(num_hiddens, ffn_num_hiddens)
-        self.dense2 = nn.Linear(ffn_num_hiddens, num_hiddens)
-
-    def forward(self, X):
-        return self.dense2(F.relu(self.dense1(X)))
-
-
-class AddNorm(nn.Module):
-    """
-    Residual connection followed by layer normalization.
-    """
-    def __init__(self, dropout, **kwargs):
-        save_hyperparams(self)
-        super(AddNorm, self).__init__(**kwargs)
-        self.dropout = nn.Dropout(dropout)
-        self.ln = nn.LayerNorm(normalized_shape=1)
-
-    def forward(self, X, Y):
-        return self.ln(self.dropout(Y) + X)
+from model.utils import PositionWiseFFN, AddNorm
 
 
 class TransformerEncoderBlock(nn.Module):
@@ -69,12 +41,12 @@ class TransformerEncoder(nn.Module):
     """
     Transformer encoder consisting of multiple encoder blocks.
     """
-    def __init__(self, num_hiddens, num_heads, num_layers, ffn_num_hiddens, dropout, **kwargs):
+    def __init__(self, vocab_size, num_hiddens, num_heads, num_layers, ffn_num_hiddens, dropout, **kwargs):
         super(TransformerEncoder, self).__init__(**kwargs)
         save_hyperparams(self)
         
         # Embeddings & Positional Encoding
-        self.embed = nn.Embedding(num_hiddens, num_hiddens)
+        self.embed = nn.Embedding(vocab_size, num_hiddens)
         self.pos_enc = PositionalEncoding(num_hiddens, dropout)
         
         # Encoder blocks
@@ -83,8 +55,14 @@ class TransformerEncoder(nn.Module):
             self.encoder_blks.add_module(f"blk_{i}", TransformerEncoderBlock(num_hiddens, ffn_num_hiddens, num_heads, dropout))
 
     def forward(self, X, valid_lens=None):
+        # Attention weights for encoder self-attention
+        self.attention_weights = [None] * self.num_layers
+        
         # Embedding + Positional Encoding
-        X = self.pos_enc(self.embed(X))
-        for layer in self.encoder_blks:
+        X = self.pos_enc(self.embed(X) * (self.num_hiddens ** 0.5))
+        for i, layer in enumerate(self.encoder_blks):
             X = layer(X, valid_lens)
+            # Record the attention weights of this block
+            self.attention_weights[i] = layer.attention.attention.attention_weights
+        
         return X, valid_lens
