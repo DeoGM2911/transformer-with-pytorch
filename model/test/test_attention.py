@@ -5,8 +5,8 @@
 # @author: Dung Tran
 # @date: August 31, 2025
 
-from attention import DotProductAttention, AdditiveAttention, MultiHeadAttention
-from test_bahdanau import check_shape
+from model.attention import DotProductAttention, AdditiveAttention, MultiHeadAttention
+from model.test.test_bahdanau import check_shape
 import torch
 
 

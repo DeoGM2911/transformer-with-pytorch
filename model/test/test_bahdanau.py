@@ -1,4 +1,4 @@
-from bahdanau import Seq2SeqEncoder, Seq2SeqDecoder
+from model.bahdanau_seq2seq import Seq2SeqEncoder, Seq2SeqDecoder
 import torch
 
 
