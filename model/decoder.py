@@ -6,8 +6,7 @@
 # @date: September 8, 2025
 
 import torch
-from torch import device, nn
-import torch.nn.functional as F
+from torch import nn
 from model.attention import MultiHeadAttention
 from model.encoding import PositionalEncoding
 from model.utils import PositionWiseFFN, AddNorm, save_hyperparams
@@ -22,19 +21,19 @@ class TransformerDecoderBlock(nn.Module):
         save_hyperparams(self)
         # The index of this block in the decoder
         self.i = index
-
+        
         # Self-attention layer
         self.attention1 = MultiHeadAttention(num_heads, num_hiddens, dropout)
         # Encoder-Decoder attention layer
         self.attention2 = MultiHeadAttention(num_heads, num_hiddens, dropout)
         
         # Position-wise feed-forward network
-        self.ffn = PositionWiseFFN(ffn_num_hiddens, num_hiddens, dropout)
+        self.ffn = PositionWiseFFN(ffn_num_hiddens, num_hiddens)
         
         # Add & Norm layers
-        self.ln1 = AddNorm(dropout)
-        self.ln2 = AddNorm(dropout)
-        self.ln3 = AddNorm(dropout)
+        self.ln1 = AddNorm(num_hiddens, dropout)
+        self.ln2 = AddNorm(num_hiddens, dropout)
+        self.ln3 = AddNorm(num_hiddens, dropout)
         
     def forward(self, X, state):
         """
@@ -78,7 +77,7 @@ class TransformerDecoder(nn.Module):
         
         # Embeddings & Positional Encoding
         self.embed = nn.Embedding(vocab_size, num_hiddens)
-        self.pos_enc = PositionalEncoding(num_hiddens, dropout)
+        self.pos_enc = PositionalEncoding(num_hiddens)
         
         # Decoder blocks
         self.decoder_blks = nn.Sequential()
@@ -113,3 +112,19 @@ class TransformerDecoder(nn.Module):
         # Output layer
         output = self.dense(X)
         return output, state
+
+
+# Unit test for the decoder
+if __name__ == "__main__":
+    num_hiddens, num_layers, dropout, batch_size, num_steps = 32, 2, 0.1, 4, 5
+    num_heads, ffn_num_hiddens = 8, 64
+    vocab_size = 1000
+    dummy_enc_output = torch.zeros((batch_size, num_steps, num_hiddens))
+    dummy_enc_valid_lens = torch.tensor([3, 2, 0, 4])
+    dummy_dec_input = torch.ones((batch_size, num_steps), dtype=torch.long)
+    decoder = TransformerDecoder(vocab_size, num_hiddens, ffn_num_hiddens, num_heads, num_layers, dropout)
+    state = decoder.init_state(dummy_enc_output, dummy_enc_valid_lens)
+    output, state = decoder(dummy_dec_input, state)
+    print(output.shape, state[0].shape, state[1].shape, state[2][0].shape, state[2][1].shape)
+    # print(decoder.attention_weights[0][0].shape, decoder.attention_weights[1][0].shape)
+    # print(decoder.attention_weights[0][1].shape, decoder.attention_weights[1][1].shape)
