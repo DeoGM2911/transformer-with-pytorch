@@ -7,13 +7,12 @@
 
 import torch
 from torch import nn, optim
-from torch.utils.data import DataLoader
 from torch.utils.tensorboard import SummaryWriter
 import datetime
 import os
 
 
-def train_step(model, train_dataloader: DataLoader, loss_fn: nn.Module, optimizer: optim.Optimizer, device, epoch, train_history):
+def train_step(model, dataset, batch_size, loss_fn: nn.Module, optimizer: optim.Optimizer, device, epoch, train_history):
     """
     Perform one training epoch with minibatch training.
 
@@ -40,9 +39,9 @@ def train_step(model, train_dataloader: DataLoader, loss_fn: nn.Module, optimize
     # Train mode
     model.train()
     total_loss = 0
-    num_batches = len(train_dataloader)
+    num_batches = dataset.num_train // batch_size
     
-    for batch_idx, data in enumerate(train_dataloader):
+    for batch_idx, data in enumerate(dataset.data_loader(batch_size)):
         # Zero gradients for each batch
         optimizer.zero_grad()
         
@@ -54,7 +53,7 @@ def train_step(model, train_dataloader: DataLoader, loss_fn: nn.Module, optimize
         outputs = model(enc_X, dec_X, enc_valid_lens)
         
         # Compute loss (sum reduction to get batch total)
-        loss = loss_fn(outputs.reshape(-1, outputs.shape[-1]), labels.reshape(-1))
+        loss = loss_fn(outputs.reshape(-1, outputs.shape[-1]), labels.reshape(-1, 1))
         batch_avg_loss = loss / batch_size
         
         # Backward pass and optimization
@@ -78,7 +77,7 @@ def train_step(model, train_dataloader: DataLoader, loss_fn: nn.Module, optimize
     return train_history
 
 
-def validate_step(model, val_dataloader: DataLoader, loss_fn: nn.Module, device, epoch, val_history):
+def validate_step(model, dataset, batch_size, loss_fn: nn.Module, device, epoch, val_history):
     """
     Perform one validation epoch with minibatch evaluation.
 
@@ -102,10 +101,10 @@ def validate_step(model, val_dataloader: DataLoader, loss_fn: nn.Module, device,
     """
     model.eval()
     total_loss = 0
-    num_batches = len(val_dataloader)
+    num_batches = dataset.num_val // batch_size
     
     with torch.no_grad():
-        for batch_idx, data in enumerate(val_dataloader):
+        for batch_idx, data in enumerate(dataset.data_loader(batch_size, train=False)):
             # Move data to device and unpack
             enc_X, dec_X, labels, enc_valid_lens = [x.to(device) for x in data]
             batch_size = enc_X.size(0)
@@ -119,7 +118,6 @@ def validate_step(model, val_dataloader: DataLoader, loss_fn: nn.Module, device,
             
             # Store batch-averaged loss
             total_loss += batch_avg_loss.item()
-            val_history.append(batch_avg_loss.item())
             
             # Optional: Print progress
             if (batch_idx + 1) % 10 == 0:
@@ -133,7 +131,7 @@ def validate_step(model, val_dataloader: DataLoader, loss_fn: nn.Module, device,
     return val_history
 
 
-def minibatch_gd(model, train_dataloader: DataLoader, val_dataloader, loss_fn: nn.Module, 
+def minibatch_gd(model, dataset, batch_size, loss_fn: nn.Module, 
                optimizer: optim.Optimizer, device, num_epochs, log_dir="runs"):
     """
     Perform minibatch gradient descent with TensorBoard visualization.
@@ -172,7 +170,7 @@ def minibatch_gd(model, train_dataloader: DataLoader, val_dataloader, loss_fn: n
     writer = SummaryWriter(log_dir)
 
     # Add graph to TensorBoard
-    dummy_input = next(iter(train_dataloader))
+    dummy_input = next(iter(dataset.data_loader(batch_size)))
     enc_X, dec_X, _, enc_valid_lens = [x.to(device) for x in dummy_input]
     writer.add_graph(model, (enc_X, dec_X, enc_valid_lens))
 
@@ -181,7 +179,7 @@ def minibatch_gd(model, train_dataloader: DataLoader, val_dataloader, loss_fn: n
         print(f'Epoch [{epoch + 1}/{num_epochs}]')
         
         # Training step
-        train_history = train_step(model, train_dataloader, loss_fn, optimizer, device, epoch, train_history)
+        train_history = train_step(model, dataset, batch_size, loss_fn, optimizer, device, epoch, train_history)
         writer.add_scalar('Loss/train', train_history[epoch], epoch)
         
         # Log learning rate
@@ -189,13 +187,12 @@ def minibatch_gd(model, train_dataloader: DataLoader, val_dataloader, loss_fn: n
         writer.add_scalar('Learning rate', current_lr, epoch)
         
         # Validation step
-        if val_dataloader is not None:
-            val_history = validate_step(model, val_dataloader, loss_fn, device, epoch, val_history)
-            writer.add_scalar('Loss/validation', val_history[epoch], epoch)
-            
-            # Log train/val loss ratio
-            loss_ratio = train_history[epoch] / val_history[epoch]
-            writer.add_scalar('Loss ratio (train/val)', loss_ratio, epoch)
+        val_history = validate_step(model, dataset, batch_size, loss_fn, device, epoch, val_history)
+        writer.add_scalar('Loss/validation', val_history[epoch], epoch)
+        
+        # Log train/val loss ratio
+        loss_ratio = train_history[epoch] / val_history[epoch]
+        writer.add_scalar('Loss ratio (train/val)', loss_ratio, epoch)
         
         # Log model parameters distributions and gradients
         for name, param in model.named_parameters():
@@ -206,7 +203,7 @@ def minibatch_gd(model, train_dataloader: DataLoader, val_dataloader, loss_fn: n
         # Add custom scalars
         writer.add_scalars('Losses', {
             'train': train_history[epoch],
-            'val': val_history[epoch] if val_dataloader else 0
+            'val': val_history[epoch]
         }, epoch)
 
     writer.close()

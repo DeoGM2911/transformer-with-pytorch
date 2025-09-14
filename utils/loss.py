@@ -15,7 +15,7 @@ class MaskedBCELoss(nn.Module):
     def __init__(self, pad, **kwargs):
         super(MaskedBCELoss, self).__init__(**kwargs)
         self.pad = pad
-        self.loss = nn.BCELoss(reduction='none', **kwargs)
+        self.loss = nn.CrossEntropyLoss(reduction='none', **kwargs)
     
     def forward(self, pred, label):
         """

@@ -105,7 +105,7 @@ class DotProductAttention(Attention):
         d = queries.shape[-1]
         
         # Compute dot-product attention scores
-        scores = torch.bmm(queries, keys.transpose(1, 2)) / math.sqrt(d)  # (batch_size, num_queries, num_keys)
+        scores = torch.bmm(queries, keys.transpose(1, 2)) / torch.tensor(math.sqrt(d))  # (batch_size, num_queries, num_keys)
         self.attention_weights = self.masked_softmax(scores, valid_lengths)
         
         return torch.bmm(self.dropout(self.attention_weights), values)

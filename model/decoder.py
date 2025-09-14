@@ -71,7 +71,7 @@ class TransformerDecoder(nn.Module):
     """
     Transformer decoder consisting of multiple decoder blocks.
     """
-    def __init__(self, vocab_size, num_hiddens, ffn_num_hiddens, num_heads, num_layers, dropout, **kwargs):
+    def __init__(self, vocab_size, num_hiddens, num_heads, num_layers, ffn_num_hiddens, dropout, **kwargs):
         super(TransformerDecoder, self).__init__(**kwargs)
         save_hyperparams(self)
         
@@ -122,7 +122,7 @@ if __name__ == "__main__":
     dummy_enc_output = torch.zeros((batch_size, num_steps, num_hiddens))
     dummy_enc_valid_lens = torch.tensor([3, 2, 0, 4])
     dummy_dec_input = torch.ones((batch_size, num_steps), dtype=torch.long)
-    decoder = TransformerDecoder(vocab_size, num_hiddens, ffn_num_hiddens, num_heads, num_layers, dropout)
+    decoder = TransformerDecoder(vocab_size, num_hiddens, num_heads, num_layers, ffn_num_hiddens, dropout)
     state = decoder.init_state(dummy_enc_output, dummy_enc_valid_lens)
     output, state = decoder(dummy_dec_input, state)
     print(output.shape, state[0].shape, state[1].shape, state[2][0].shape, state[2][1].shape)

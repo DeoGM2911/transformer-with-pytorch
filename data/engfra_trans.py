@@ -8,6 +8,7 @@
 import torch
 import regex as re
 from torch.utils.data import Dataset, DataLoader
+from sklearn.utils import shuffle
 
 
 class MTEngFra(Dataset):
@@ -44,6 +45,32 @@ class MTEngFra(Dataset):
     
     def __getitem__(self, idx):
         return self.arrays[0][idx], self.arrays[1][idx], self.arrays[2][idx], self.arrays[3][idx]
+    
+    def data_loader(self, batch_size, train=True):
+        # Take a slice of all the arrays
+        data_batch = [None] * len(self.arrays)
+        if train:
+            start = 0
+            end = self.num_train
+        else:
+            start = self.num_train
+            end = self.num_train + self.num_val
+        
+        for i in range(len(self.arrays)):
+            # Skip if enc valid length is none
+            if self.arrays[i] is None:
+                continue
+            
+            data_batch[i] = shuffle(self.arrays[i][start:end])
+        
+        # Yield batch_size amount of samples
+        num_batch = len(data_batch[0]) // batch_size
+        for i in range(num_batch):
+            start, end = i * batch_size, min((i + 1) * batch_size, len(data_batch[0]))
+            if data_batch[3] is None:
+                yield data_batch[0][start:end], data_batch[1][start:end], data_batch[2][start:end], None
+            yield data_batch[0][start:end], data_batch[1][start:end], data_batch[2][start:end], data_batch[3][start:end]
+
     
     def _download(self):
         """

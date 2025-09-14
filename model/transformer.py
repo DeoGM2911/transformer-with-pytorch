@@ -70,7 +70,7 @@ if __name__ == "__main__":
     num_heads, ffn_num_hiddens = 8, 64
     vocab_size = 10
     encoder = TransformerEncoder(vocab_size, num_hiddens, num_heads, num_layers, ffn_num_hiddens, dropout)
-    decoder = TransformerDecoder(vocab_size, num_hiddens, ffn_num_hiddens, num_heads, num_layers, dropout)
+    decoder = TransformerDecoder(vocab_size, num_hiddens, num_heads, num_layers, ffn_num_hiddens, dropout)
     model = TransformerSeq2Seq(encoder, decoder, target_pad=0)
     dummy_enc_input = torch.ones((batch_size, num_steps), dtype=torch.long)
     dummy_dec_input = torch.ones((batch_size, num_steps), dtype=torch.long)
