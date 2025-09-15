@@ -174,9 +174,9 @@ class MTEngFra(Dataset):
             
             array = torch.tensor(
                 [[vocab[token] for token in sent if token in vocab] for sent in tokens],
-                dtype=torch.int32
+                dtype=torch.long
             )
-            valid_lens = (array != vocab["<pad>"]).type(torch.int32).sum(1)
+            valid_lens = (array != vocab["<pad>"]).type(torch.long).sum(1)
             return array, valid_lens, vocab
         
         src, tgt = self._tokenize(self._preprocess(raw_texts), self.num_train + self.num_val)

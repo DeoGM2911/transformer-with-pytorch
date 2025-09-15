@@ -60,7 +60,7 @@ class TransformerSeq2Seq(nn.Module):
                 if keep_attention_weights:
                     attention_weights.append(dec_outputs[2])
                 outputs.append(dec_outputs[0].argmax(dim=-1))
-
+        print(outputs)
         return torch.cat(outputs[1:], dim=1), attention_weights
 
 

@@ -53,7 +53,7 @@ def train_step(model, dataset, batch_size, loss_fn: nn.Module, optimizer: optim.
         outputs = model(enc_X, dec_X, enc_valid_lens)
         
         # Compute loss (sum reduction to get batch total)
-        loss = loss_fn(outputs.reshape(-1, outputs.shape[-1]), labels.reshape(-1, 1))
+        loss = loss_fn(outputs.reshape(-1, outputs.shape[-1]), labels.reshape(-1))
         batch_avg_loss = loss / batch_size
         
         # Backward pass and optimization
@@ -132,7 +132,7 @@ def validate_step(model, dataset, batch_size, loss_fn: nn.Module, device, epoch,
 
 
 def minibatch_gd(model, dataset, batch_size, loss_fn: nn.Module, 
-               optimizer: optim.Optimizer, device, num_epochs, log_dir="runs"):
+               optimizer: optim.Optimizer, device, num_epochs, writer=None):
     """
     Perform minibatch gradient descent with TensorBoard visualization.
 
@@ -140,10 +140,10 @@ def minibatch_gd(model, dataset, batch_size, loss_fn: nn.Module,
     ----------
     model : nn.Module
         The model to be trained.
-    train_dataloader : DataLoader
-        The data loader for the training data.
-    val_dataloader : DataLoader
-        The data loader for validation data.
+    dataset : Dataset
+        The dataset containing training and validation data.
+    batch_size : int
+        Size of each training batch.
     loss_fn : nn.Module
         The loss function.
     optimizer : optim.Optimizer
@@ -152,8 +152,8 @@ def minibatch_gd(model, dataset, batch_size, loss_fn: nn.Module,
         The device to run the training on.
     num_epochs : int
         Number of epochs to train.
-    log_dir : str
-        Directory for TensorBoard logs.
+    writer : SummaryWriter, optional
+        TensorBoard writer instance for logging.
 
     Returns:
     -------
@@ -164,47 +164,57 @@ def minibatch_gd(model, dataset, batch_size, loss_fn: nn.Module,
     train_history = torch.zeros(num_epochs)
     val_history = torch.zeros(num_epochs)
 
-    # Set up TensorBoard writer
-    current_time = datetime.datetime.now().strftime("%Y%m%d-%H%M%S")
-    log_dir = os.path.join(log_dir, current_time)
-    writer = SummaryWriter(log_dir)
+    # Create writer if not provided
+    if writer is None:
+        current_time = datetime.datetime.now().strftime("%Y%m%d-%H%M%S")
+        log_dir = os.path.join('runs', current_time)
+        writer = SummaryWriter(log_dir)
+        should_close_writer = True
+    else:
+        should_close_writer = False
 
-    # Add graph to TensorBoard
-    dummy_input = next(iter(dataset.data_loader(batch_size)))
-    enc_X, dec_X, _, enc_valid_lens = [x.to(device) for x in dummy_input]
-    writer.add_graph(model, (enc_X, dec_X, enc_valid_lens))
+    try:
+        # Add graph to TensorBoard
+        dummy_input = next(iter(dataset.data_loader(batch_size)))
+        enc_X, dec_X, _, enc_valid_lens = [x.to(device) for x in dummy_input]
+        try:
+            writer.add_graph(model, (enc_X, dec_X, enc_valid_lens))
+        except Exception as e:
+            print(f"Warning: Could not add model graph to TensorBoard: {e}")
 
-    # Training loop
-    for epoch in range(num_epochs):
-        print(f'Epoch [{epoch + 1}/{num_epochs}]')
-        
-        # Training step
-        train_history = train_step(model, dataset, batch_size, loss_fn, optimizer, device, epoch, train_history)
-        writer.add_scalar('Loss/train', train_history[epoch], epoch)
-        
-        # Log learning rate
-        current_lr = optimizer.param_groups[0]['lr']
-        writer.add_scalar('Learning rate', current_lr, epoch)
-        
-        # Validation step
-        val_history = validate_step(model, dataset, batch_size, loss_fn, device, epoch, val_history)
-        writer.add_scalar('Loss/validation', val_history[epoch], epoch)
-        
-        # Log train/val loss ratio
-        loss_ratio = train_history[epoch] / val_history[epoch]
-        writer.add_scalar('Loss ratio (train/val)', loss_ratio, epoch)
-        
-        # Log model parameters distributions and gradients
-        for name, param in model.named_parameters():
-            writer.add_histogram(f'Parameters/{name}', param.data, epoch)
-            if param.grad is not None:
-                writer.add_histogram(f'Gradients/{name}', param.grad, epoch)
-        
-        # Add custom scalars
-        writer.add_scalars('Losses', {
-            'train': train_history[epoch],
-            'val': val_history[epoch]
-        }, epoch)
+        # Training loop
+        for epoch in range(num_epochs):
+            print(f'Epoch [{epoch + 1}/{num_epochs}]')
+            
+            # Training step
+            train_history = train_step(model, dataset, batch_size, loss_fn, optimizer, device, epoch, train_history)
+            writer.add_scalar('Loss/train', train_history[epoch].item(), epoch)
+            
+            # Log learning rate
+            current_lr = optimizer.param_groups[0]['lr']
+            writer.add_scalar('Learning_rate', current_lr, epoch)
+            
+            # Validation step
+            val_history = validate_step(model, dataset, batch_size, loss_fn, device, epoch, val_history)
+            writer.add_scalar('Loss/validation', val_history[epoch].item(), epoch)
+            
+            # Log train/val loss ratio
+            loss_ratio = train_history[epoch].item() / val_history[epoch].item()
+            writer.add_scalar('Metrics/loss_ratio', loss_ratio, epoch)
+            
+            # Log model parameters distributions and gradients (every 5 epochs to save space)
+            if epoch % 5 == 0:
+                for name, param in model.named_parameters():
+                    writer.add_histogram(f'Parameters/{name}', param.data, epoch)
+                    if param.grad is not None:
+                        writer.add_histogram(f'Gradients/{name}', param.grad, epoch)
+            
+            # Ensure data is written to disk
+            writer.flush()
 
-    writer.close()
+    finally:
+        # Only close the writer if we created it
+        if should_close_writer:
+            writer.close()
+
     return train_history, val_history
