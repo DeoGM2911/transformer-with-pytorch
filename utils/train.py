@@ -10,6 +10,13 @@ from torch import nn, optim
 from torch.utils.tensorboard import SummaryWriter
 import datetime
 import os
+import wandb
+
+from model.transformer import TransformerDecoder, TransformerEncoder, TransformerSeq2Seq
+from model.ViT.ViT import ViT
+from loss import MaskedBCELoss
+
+from data.engfra_trans import MTEngFra
 
 
 def train_step(model, dataset, batch_size, loss_fn: nn.Module, optimizer: optim.Optimizer, device, epoch, train_history):
@@ -218,3 +225,83 @@ def minibatch_gd(model, dataset, batch_size, loss_fn: nn.Module,
             writer.close()
 
     return train_history, val_history
+
+
+def load_config(filename):
+    """Load a YAML config file for wandb"""
+    import yaml
+    with open(filename, "r") as f:
+        config = yaml.safe_load(f)
+    return config
+
+
+def train(project, config, fixed_params):
+    """
+    Training and Logging with Wandb. Only accept one set of parameters. For sweeping, see sweep_train().
+    
+    Note that config files contain model-specific parameters, while fixed params depend on the task and the dataset.
+    """
+    # If the config is a string, it's the file name, else, it's the dictionary
+    config = load_config(config) if isinstance(config, str) else config
+    
+    # Initilaize and config
+    wandb.init(project=project, config=config)
+    cfg = wandb.config
+    
+    # Create the model, dataset, and optimizer with the config
+    encoder = TransformerEncoder(fixed_params["src_vocab_size"], cfg.num_hiddens, cfg.num_heads, cfg.num_layers,
+                                cfg.ffn_num_hiddnes, cfg.dropout)
+    decoder = TransformerDecoder(fixed_params["tgt_vocab_size"], cfg.num_hiddens, cfg.num_heads, cfg.num_layers,
+                                cfg.ffn_num_hiddens, cfg.dropout)
+    model = TransformerSeq2Seq(encoder, decoder, fixed_params["target_pad"])
+    
+    criterion = MaskedBCELoss(fixed_params["target_pad"])
+    if cfg.optimizer == "adam":
+        optimizer = optim.Adam(model.parameters(), lr=cfg.lr)
+    else:
+        optimizer = optim.SGD(model.parameters(), lr=cfg.lr)
+    
+    # Prep the dataset
+    dataset = MTEngFra(cfg.data_path, cfg.num_steps, cfg.num_train, cfg.num_val)
+    
+    # Record all the values for every step
+    wandb.watch(model, criterion, "all", log_freq=1)
+    
+    device = torch.device(cfg.device if torch.cuda.is_available() else "cpu")
+    # Loss histories
+    train_history, val_history = torch.zeros(cfg.num_epoch), torch.zeros(cfg.num_epoch)
+    
+    # Training loop
+    for i in range(cfg.num_epoch):
+        
+        # Training step
+        train_step(model, dataset, cfg.batch_size, criterion, optimizer, device, i, train_history)
+        
+        # Validation step
+        validate_step(model, dataset, cfg.batch_size, criterion, device, i, val_history)
+        
+        # Log the losses
+        wandb.log({"epoch": i,
+            "train/loss": train_history[i],
+            "val/loss": val_history[i],
+            "lr": optimizer.param_groups[0]["lr"]}, step=i)
+    
+    # Finish
+    wandb.finish()
+    return train_history, val_history
+
+
+def _sweep_train():
+    """Training with Wandb. Support parameter sweeping."""
+    # Init
+    wandb.init(project="MY_PROJECT")
+    cfg = wandb.config
+    fixed_params = {}
+    
+    # Access the config
+    train("MY_PROJECT", cfg, fixed_params)
+
+
+def sweep_train(config_file):
+    sweep_id = wandb.sweep(load_config(config_file), project="MY_PROJECT")
+    wandb.agent(sweep_id, _sweep_train, project="MY_PROJECT", count=5)

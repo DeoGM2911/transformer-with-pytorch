@@ -1,0 +1,37 @@
+method: grid
+metric:
+  name: val/loss
+  goal: minimize
+parameters:
+  lr:
+    distribution: log_uniform_values
+    min: 0.0001
+    max: 0.01
+  num_hiddens:
+    values: [32, 64, 128, 256]
+  batch_size:
+    values: [32, 64, 128]
+  num_heads:
+    values: [2, 4, 8]
+  num_layers:
+    values: [2, 4, 6]
+  ffn_num_hiddens:
+    values: [64, 128, 256]
+  dropout:
+    values: [0.1, 0.2, 0.3]
+  optimizer:
+    values: ["adam", "sgd"]
+  num_epoch:
+    value: 8
+  log_freq:
+    value: 1
+  data_path:
+    value: "data/fra-eng"
+  num_steps:
+    value: 10
+  num_train:
+    value: 500
+  num_val:
+    value: 125
+  device:
+    value: "cuda"
