@@ -41,7 +41,11 @@ class TransformerSeq2Seq(nn.Module):
         self.eval()
 
         batch_size, _ = enc_X.shape
-        outputs = [torch.tensor(self.tgt_pad).to(device).repeat(batch_size).unsqueeze(1)]
+        if beam_size == 1:
+            outputs = [torch.tensor(self.tgt_pad).to(device).repeat(batch_size).unsqueeze(1)]
+        else:
+            # Top k choices require us to repeat a sample beam_size times
+            outputs = [torch.tensor(self.tgt_pad).to(device).repeat(batch_size, beam_size).unsqueeze(1)]
         attention_weights = [] if keep_attention_weights else None
         
         with torch.no_grad():
